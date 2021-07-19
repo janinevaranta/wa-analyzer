@@ -12,12 +12,12 @@ import os
 import sys
 import regex as re
 import pandas as pd
-import matplotlib
-from datafunc import *
+from command_functions import *
 
 COMMANDS = {
     "help": help,
     "exit": ex,
+    "frame": frame,
     "sample": samp,
     "top": top,
     "bottom": bot,
@@ -31,8 +31,26 @@ COMMANDS = {
     "font-size": font_size
 }
 
+DATEFORMATS = {
+    "0": "%d/%m/%Y",
+    "1": "%m/%d/%Y",
+    "2": "%Y/%m/%d",
+    "3": "%d.%m.%Y",
+    "4": "%m.%d.%Y",
+    "5": "%Y.%m.%d"
+}
 
-print("""WA-Analyzer v0.1 - Get insight about your WhatsApp conversations!
+TIMEFORMATS = {
+    "0": "%H:%M",
+    "1": "%H.%M",
+    "2": "%H:%M:%S",
+    "3": "%H.%M.%S",
+    "4": "%I:%M %p",
+    "5": "%I:%M:%S %p"
+}
+
+
+print("""WA-Analyzer v0.2 - Get insight about your WhatsApp conversations!
 Made by Jani Nevaranta, 2021/07
 
 """)
@@ -52,15 +70,68 @@ while True:
         print("Invalid path! Please check the filepath (the filepath must include the .txt -ending on the file).")
 
 
-def parse_file(text_file):
+while True:
+    # Ask the user importing related questions.
+    print("Please enter the corresponding number for the operating system on your device:")
+    print("0 = Android")
+    print("1 = iOS")
+    device = input(">")
+    if device != "0" and device != "1":
+        print("Invalid device! Please enter '0' or '1'.")
+    else:
+        print("Please enter the corresponding number for the date format on your phone:")
+        print("0 = dd/mm/yyyy")
+        print("1 = mm/dd/yyyy")
+        print("2 = yyyy/mm/dd")
+        print("3 = dd.mm.yyyy")
+        print("4 = mm.dd.yyyy")
+        print("5 = yyyy.mm.dd")
+        date_format = input(">")
+        if date_format not in DATEFORMATS:
+            print("Invalid device! Please enter '0', '1', '2', '3', '4', or '5'.")
+            continue
+        else:
+            print(
+                "Please enter the corresponding number for the time format on your phone:")
+            print("0 = 00:00")
+            print("1 = 00.00")
+            print("2 = 00:00:00")
+            print("3 = 00.00.00")
+            print("4 = 00:00 am")
+            print("5 = 00:00:00 am")
+            time_format = input(">")
+            if time_format not in TIMEFORMATS:
+                print("Invalid device! Please enter '0', '1', '2', '3', '4', or '5'.")
+                continue
+            else:
+                break
+
+
+def parse_file(text_file, device, date_format, time_format):
     '''Convert WhatsApp chat log text file to a Pandas dataframe.'''
 
+    time_format = TIMEFORMATS[time_format]
+    date_format = DATEFORMATS[date_format]
+
+    if device == "0":  # Android
+        text_regex = r'^(\d{1,2}\/\d{1,2}\/\d\d\d\d.*?)(?=^^\d{1,2}\/\d{1,2}\/\d\d\d\d|\Z)'
+        search_string = ' - (.*?):'
+        datetime_format = date_format+", "+time_format
+        row_splitter = " - "
+    else:  # iOS
+        text_regex = r'^(\[\d{1,2}\.\d{1,2}\.\d\d\d\d.*?)(?=^^\[\d{1,2}\.\d{1,2}\.\d\d\d\d|\Z)'
+        search_string = '] (.*?):'
+        # To account for the [] format in iOS devices.
+        date_format = "[" + date_format
+        datetime_format = date_format+" "+time_format
+        row_splitter = "] "
+
     # some regex to account for messages taking up multiple lines
-    pat = re.compile(
-        r'^(\d\d\/\d\d\/\d\d\d\d.*?)(?=^^\d\d\/\d\d\/\d\d\d\d|\Z)', re.S | re.M)
+    pat = re.compile(text_regex, re.S | re.M)
     with open(text_file, encoding="utf-8") as f:
         data = [m.group(1).strip().replace('\n', ' ')
                 for m in pat.finditer(f.read())]
+        print(data)
 
     sender = []
     message = []
@@ -68,11 +139,11 @@ def parse_file(text_file):
     for row in data:
 
         # timestamp is before the first dash
-        datetime.append(row.split(' - ')[0])
+        datetime.append(row.split(row_splitter)[0])
 
         # sender is between a dash and colon
         try:
-            s = re.search(' - (.*?):', row).group(1)
+            s = re.search(search_string, row).group(1)
             sender.append(s)
         except:
             sender.append('')
@@ -85,7 +156,8 @@ def parse_file(text_file):
 
     df = pd.DataFrame(zip(datetime, sender, message), columns=[
                       'timestamp', 'sender', 'message'])
-    df['timestamp'] = pd.to_datetime(df.timestamp, format='%d/%m/%Y, %H:%M')
+    df['timestamp'] = pd.to_datetime(
+        df.timestamp, format=datetime_format)
 
     # remove events not associated with a sender
     df = df[df.sender != ''].reset_index(drop=True)
@@ -95,10 +167,7 @@ def parse_file(text_file):
 
 # Parse the file
 print("Parsing the file...")
-try:
-    chat_df = parse_file(path)
-except:
-    print("Something went wrong!")
+chat_df = parse_file(path, device, date_format, time_format)
 
 
 # Test the dataframe here. If the data presented here seems logical, the parsing was succesful.
